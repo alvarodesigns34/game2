@@ -7,7 +7,7 @@ import { Fields } from '../src/sim/fields';
 import { census } from '../src/sim/economy';
 import { Demand } from '../src/sim/demand';
 import { PaintResult, Tool, World } from '../src/sim/world';
-import { POWER_PLANT_CAPACITY, ROAD_CAPACITY } from '../src/data/balance';
+import { POWER_COM, POWER_PLANT_CAPACITY, ROAD_CAPACITY } from '../src/data/balance';
 
 /** Centro del area desbloqueada al inicio de la partida. */
 function centre(g: Grid): [number, number] {
@@ -75,13 +75,17 @@ describe('energia por las calles', () => {
   it('con deficit apaga primero lo mas lejano a la central', () => {
     const g = makeGrid();
     const [cx, cy] = centre(g);
-    road(g, cx, cx + 40, cy);
+    // Torres suficientes para desbordar una central, sea cual sea su
+    // capacidad: el numero se deriva del balance en vez de fijarlo a mano.
+    const towers = Math.ceil(POWER_PLANT_CAPACITY / POWER_COM[5]) + 6;
+    const span = Math.ceil(towers / 2);
+    road(g, cx, cx + span + 1, cy);
     g.zone[g.idx(cx - 1, cy)] = Zone.PowerPlant;
 
-    // 20 torres comerciales de nivel 5: 78 x 20 = 1560 > 900 de capacidad.
+    // A ambos lados de la misma calle, para no salirse del area desbloqueada.
     const tiles: number[] = [];
-    for (let k = 0; k < 20; k++) {
-      const i = g.idx(cx + k * 2, cy + 1);
+    for (let k = 0; k < towers; k++) {
+      const i = g.idx(cx + (k >> 1), cy + (k % 2 === 0 ? 1 : -1));
       g.zone[i] = Zone.Commercial;
       g.level[i] = 5;
       tiles.push(i);
@@ -261,13 +265,35 @@ describe('economia', () => {
 describe('demanda RCI', () => {
   it('arranca con demanda residencial en una ciudad vacia', () => {
     const d = new Demand();
-    for (let k = 0; k < 200; k++) d.update(0, 0, 0);
+    for (let k = 0; k < 200; k++) d.update(0, 0, 0, 0, 0);
     expect(d.values[0]).toBeGreaterThan(0.5);
+  });
+
+  it('una ciudad brillante atrae poblacion aunque el empleo este equilibrado', () => {
+    const balanced = new Demand();
+    const glowing = new Demand();
+    for (let k = 0; k < 400; k++) {
+      // Mismo equilibrio entre empleo y poblacion activa en ambos casos.
+      balanced.update(2000, 600, 440, 0, 0);
+      glowing.update(2000, 600, 440, 300, 0);
+    }
+    expect(glowing.values[0]).toBeGreaterThan(balanced.values[0] + 0.2);
+    expect(glowing.attraction).toBeGreaterThan(0.2);
+  });
+
+  it('la tension expulsa poblacion', () => {
+    const calm = new Demand();
+    const tense = new Demand();
+    for (let k = 0; k < 400; k++) {
+      calm.update(2000, 600, 440, 300, 0.05);
+      tense.update(2000, 600, 440, 300, 0.85);
+    }
+    expect(tense.values[0]).toBeLessThan(calm.values[0] - 0.3);
   });
 
   it('la demanda residencial se agota si hay gente y no hay empleo', () => {
     const d = new Demand();
-    for (let k = 0; k < 400; k++) d.update(3000, 0, 0);
+    for (let k = 0; k < 400; k++) d.update(3000, 0, 0, 0, 0);
     expect(d.values[0]).toBeLessThan(0);
     // Y en cambio pide comercio, que es lo que falta.
     expect(d.values[1]).toBeGreaterThan(0.5);

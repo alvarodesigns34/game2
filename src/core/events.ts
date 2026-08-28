@@ -1,5 +1,5 @@
 /** Emisor de eventos minimo y tipado, para comunicar simulacion, render y HUD. */
-export class Emitter<Events extends Record<string, unknown>> {
+export class Emitter<Events extends object> {
   private handlers = new Map<keyof Events, Set<(payload: never) => void>>();
 
   on<K extends keyof Events>(type: K, fn: (payload: Events[K]) => void): () => void {

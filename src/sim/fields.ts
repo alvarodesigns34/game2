@@ -1,5 +1,6 @@
 import {
   DESIRE_BASE,
+  INDUSTRY_DESIRE_BONUS,
   DESIRE_W,
   GLOW_COM,
   GLOW_IND,
@@ -9,6 +10,8 @@ import {
   ORDER_TENSION_RELIEF,
   PARK_STRENGTH,
   POLLUTION_IND,
+  POLLUTION_POWER_PLANT,
+  URBANITY_BY_LEVEL,
   CONGESTION_FLOOR,
   TENSION_FROM_CONTRAST,
   TENSION_FROM_GLOW,
@@ -44,6 +47,7 @@ export class Fields {
   private readonly glowFar: Float32Array;
   private readonly park: Float32Array;
   private readonly congestion: Float32Array;
+  private readonly urbanity: Float32Array;
   private readonly scratch: Float32Array;
 
   constructor(size: number) {
@@ -51,6 +55,7 @@ export class Fields {
     this.glowFar = new Float32Array(size);
     this.park = new Float32Array(size);
     this.congestion = new Float32Array(size);
+    this.urbanity = new Float32Array(size);
     this.scratch = new Float32Array(size);
   }
 
@@ -67,6 +72,7 @@ export class Fields {
     this.glowFar.fill(0);
     this.park.fill(0);
     this.congestion.fill(0);
+    this.urbanity.fill(0);
     pollution.fill(0);
     orderCover.fill(0);
 
@@ -77,6 +83,8 @@ export class Fields {
         const i = y * w + x;
         const z = zone[i] as Zone;
         const lv = level[i];
+
+        if (lv > 0) this.urbanity[i] = URBANITY_BY_LEVEL[lv];
 
         if (lv > 0 && powered[i] === 1) {
           // Un edificio a oscuras no brilla. El apagon apaga tambien la
@@ -92,6 +100,7 @@ export class Fields {
           }
         }
         if (z === Zone.Industrial && lv > 0) pollution[i] = POLLUTION_IND[lv];
+        else if (z === Zone.PowerPlant) pollution[i] = POLLUTION_POWER_PLANT;
         else if (z === Zone.Park) this.park[i] = PARK_STRENGTH;
         else if (z === Zone.Road) {
           const c = g.congestion[i];
@@ -121,6 +130,7 @@ export class Fields {
     blurField(pollution, this.scratch, w, 4, 2, minX, minY, maxX, maxY);
     blurField(this.park, this.scratch, w, 3, 2, minX, minY, maxX, maxY);
     blurField(this.congestion, this.scratch, w, 2, 1, minX, minY, maxX, maxY);
+    blurField(this.urbanity, this.scratch, w, 4, 2, minX, minY, maxX, maxY);
 
     // --- tension y deseabilidad -----------------------------------------
     let tensionSum = 0;
@@ -155,10 +165,20 @@ export class Fields {
           tensionCount++;
         }
 
+        // La industria ignora su propia contaminacion y casi toda la tension:
+        // lo que la frena es no poder sacar la mercancia.
+        g.industryDesire[i] = clamp01(
+          DESIRE_BASE + INDUSTRY_DESIRE_BONUS +
+            DESIRE_W.urbanity * sat(this.urbanity[i] * 1.6) +
+            DESIRE_W.congestion * Math.min(1, this.congestion[i]) +
+            DESIRE_W.tension * t * 0.3,
+        );
+
         const d =
           DESIRE_BASE +
           DESIRE_W.glow * sat(glowValue) +
           DESIRE_W.park * sat(this.park[i]) +
+          DESIRE_W.urbanity * sat(this.urbanity[i] * 1.6) +
           DESIRE_W.pollution * sat(pollution[i]) +
           DESIRE_W.tension * t +
           DESIRE_W.congestion * Math.min(1, this.congestion[i]) +

@@ -34,6 +34,12 @@ export class Grid {
   /** Distancia por la red viaria hasta la central mas cercana (0xffff = aislado). */
   readonly gridDist: Uint16Array;
   readonly desire: Float32Array;
+  /**
+   * Valor del suelo para uso industrial. Es un campo aparte porque una
+   * fabrica no valora lo mismo que una vivienda: le da igual el humo y el
+   * neon, y lo que le importa es tener espacio y una salida despejada.
+   */
+  readonly industryDesire: Float32Array;
   readonly glow: Float32Array;
   readonly tension: Float32Array;
   readonly pollution: Float32Array;
@@ -69,6 +75,7 @@ export class Grid {
     this.powered = new Uint8Array(n);
     this.gridDist = new Uint16Array(n);
     this.desire = new Float32Array(n);
+    this.industryDesire = new Float32Array(n);
     this.glow = new Float32Array(n);
     this.tension = new Float32Array(n);
     this.pollution = new Float32Array(n);

@@ -106,6 +106,8 @@ export class World {
       this.lastCensus.population,
       this.lastCensus.comJobs,
       this.lastCensus.indJobs,
+      this.fields.totalGlow,
+      this.fields.averageTension,
     );
 
     updateGrowth(g, this.rng, this.demand.values, this.tick % GROWTH_PHASES);
@@ -213,7 +215,7 @@ export class World {
       demand: [this.demand.values[0], this.demand.values[1], this.demand.values[2]],
       powerSupply: p.supply,
       powerDemand: p.demand,
-      blackoutRatio: p.consumers > 0 ? p.dark / (p.consumers + p.dark) : 0,
+      blackoutRatio: p.consumers + p.dark > 0 ? p.dark / (p.consumers + p.dark) : 0,
       congestion: this.lastTraffic.averageCongestion,
       glow: this.fields.totalGlow,
       tension: this.fields.averageTension,

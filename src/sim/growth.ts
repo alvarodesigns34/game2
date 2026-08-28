@@ -4,6 +4,7 @@ import {
   DESIRE_HYSTERESIS,
   GROWTH_PHASES,
   LEVEL_COOLDOWN,
+  LEVEL_DEMAND_FLOOR,
   LEVEL_DESIRE,
   MAX_LEVEL,
 } from '../data/balance';
@@ -40,7 +41,7 @@ export function updateGrowth(
   demand: readonly [number, number, number],
   phase: number,
 ): GrowthResult {
-  const { zone, level, age, darkFor, powered, desire, w } = g;
+  const { zone, level, age, darkFor, powered, desire, industryDesire, w } = g;
   const { minX, minY, maxX, maxY } = g;
 
   let built = 0;
@@ -75,7 +76,7 @@ export function updateGrowth(
 
       if (age[i] < 0xffff - GROWTH_PHASES) age[i] += GROWTH_PHASES;
 
-      const d = desire[i];
+      const d = z === Zone.Industrial ? industryDesire[i] : desire[i];
 
       // --- degradacion ---------------------------------------------------
       if (lv > 0) {
@@ -109,12 +110,23 @@ export function updateGrowth(
 
       if (lv >= MAX_LEVEL) continue;
       if (age[i] < LEVEL_COOLDOWN) continue;
-      if (dem <= 0) continue;
       if (d < LEVEL_DESIRE[lv + 1]) continue;
+
+      /**
+       * La subida de nivel NO exige demanda positiva, solo que la demanda no
+       * este hundida. La demanda decide si se ocupa un solar vacio; lo que
+       * decide si un edificio se sustituye por otro mas alto es el valor del
+       * suelo, igual que en una ciudad real.
+       *
+       * Atarla a la demanda producia un empate permanente: en cuanto empleo y
+       * poblacion se igualaban, la ciudad dejaba de mejorar para siempre y la
+       * partida se congelaba con la mitad de los solares vacios.
+       */
+      if (dem <= LEVEL_DEMAND_FLOOR) continue;
 
       // Cuanto mejor es el sitio y mayor la demanda, mas rapido sube.
       const margin = d - LEVEL_DESIRE[lv + 1];
-      if (rng.next() < 0.06 + 0.35 * dem + 0.5 * margin) {
+      if (rng.next() < 0.05 + 0.30 * Math.max(0, dem) + 0.5 * margin) {
         level[i] = lv + 1;
         age[i] = 0;
         upgraded++;

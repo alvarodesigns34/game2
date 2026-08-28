@@ -1,0 +1,423 @@
+/* =========================================================================
+   CIUDAD NEON - capa de interfaz
+
+   Principio rector: la ciudad es el protagonista y el HUD es la sala de
+   control. Por eso el HUD NO brilla. La escena ya esta saturada de neon; si la
+   interfaz tambien lo estuviera, competiria con ella y el jugador no sabria
+   donde mirar. Superficies opacas, filetes de 1px, cero bordes luminosos.
+   El unico color propio del HUD es el de las alertas: cuando algo se tine, es
+   porque de verdad pasa algo.
+   ========================================================================= */
+
+:root {
+  /* Espaciado: base 4, escala en 8. */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 24px; --s-6: 32px; --s-7: 48px;
+
+  /* Superficies. Casi opacas: el desenfoque esta al servicio de la lectura
+     sobre una escena en movimiento, no como efecto. */
+  --surface:        rgba(9, 12, 20, 0.86);
+  --surface-raised: rgba(19, 24, 38, 0.92);
+  --surface-sunken: rgba(4, 6, 11, 0.72);
+
+  /* Tinta con temperatura azul: ningun gris puro en toda la interfaz. */
+  --ink:        #e8eefc;
+  --ink-muted:  #8a97b4;
+  --ink-faint:  #5a668a;
+
+  --hairline:        rgba(160, 190, 255, 0.10);
+  --hairline-strong: rgba(160, 190, 255, 0.20);
+
+  /* Semantica de estado. Es el unico color que el HUD aporta por si mismo. */
+  --warn:     #ffb03a;
+  --critical: #ff4d5f;
+  --good:     #3ce08f;
+
+  --dur-instant: 120ms;
+  --dur-fast: 180ms;
+  --dur-base: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --font-ui: 'Barlow Condensed', 'Oswald', 'Arial Narrow', sans-serif;
+  --font-num: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #05070d;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+#scene {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* El HUD no intercepta el raton salvo en sus propios controles: arrastrar
+   sobre un hueco del HUD tiene que seguir moviendo la camara. */
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  z-index: 10;
+}
+#hud > * { pointer-events: auto; }
+
+/* ------------------------------------------------------------------ topbar */
+
+.topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 54px;
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-5);
+  padding: 0 var(--s-4);
+  background: linear-gradient(to bottom, rgba(5, 7, 13, 0.94), rgba(5, 7, 13, 0.74));
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.20em;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* Marca: dos barras desiguales. Un logotipo hecho con la retícula del juego,
+   no un emoji. */
+.brand-mark {
+  width: 14px;
+  height: 18px;
+  background:
+    linear-gradient(#00e5ff, #00e5ff) 0 4px / 4px 14px no-repeat,
+    linear-gradient(#ff2d95, #ff2d95) 6px 0 / 4px 18px no-repeat,
+    linear-gradient(#a45cff, #a45cff) 12px 8px / 2px 10px no-repeat;
+}
+
+.readouts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.readout {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+}
+
+.readout b {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.readout span {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  line-height: 1;
+}
+
+.readout[data-trend='down'] b { color: var(--critical); }
+
+.speed {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--s-2) 0;
+}
+
+.speed button {
+  font-family: var(--font-num);
+  font-size: 12px;
+  font-weight: 500;
+  min-width: 38px;
+  height: 30px;
+  padding: 0 var(--s-2);
+  color: var(--ink-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--hairline);
+  cursor: pointer;
+  transition: color var(--dur-instant), background var(--dur-instant);
+}
+.speed button:first-child { border-radius: 3px 0 0 3px; }
+.speed button:last-child { border-radius: 0 3px 3px 0; }
+.speed button:hover { color: var(--ink); background: var(--surface-raised); }
+.speed button.is-active {
+  color: #05070d;
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+/* ------------------------------------------------------------------ demanda */
+
+.demand-panel {
+  position: absolute;
+  left: var(--s-4);
+  top: 78px;
+  width: 96px;
+  padding: var(--s-3) var(--s-3) var(--s-5);
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+}
+
+.demand-panel h2 {
+  margin: 0 0 var(--s-3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.bars {
+  display: flex;
+  gap: var(--s-2);
+  height: 76px;
+}
+
+/* El gesto vivo del HUD: cada barra crece desde una linea central hacia
+   arriba si hay demanda y hacia abajo si sobra oferta. Es el latido del
+   juego, y es lo unico que se mueve en toda la interfaz. */
+.bar {
+  position: relative;
+  flex: 1;
+  background: var(--surface-sunken);
+  border-radius: 2px;
+}
+
+.bar::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--hairline-strong);
+}
+
+.bar i {
+  position: absolute;
+  left: 2px; right: 2px;
+  height: var(--v, 0%);
+  max-height: 50%;
+  border-radius: 1px;
+  transition: height var(--dur-base) var(--ease-out), background var(--dur-fast);
+}
+
+.bar[data-sign='pos'] i { bottom: 50%; background: var(--good); }
+.bar[data-sign='neg'] i { top: 50%; background: var(--critical); }
+
+.bar span {
+  position: absolute;
+  bottom: -18px;
+  left: 0; right: 0;
+  text-align: center;
+  font-family: var(--font-num);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------ avisos */
+
+.alerts {
+  position: absolute;
+  top: 78px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  align-items: center;
+  pointer-events: none;
+}
+
+.alert {
+  padding: var(--s-2) var(--s-4);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  background: var(--surface-raised);
+  border-left: 3px solid var(--warn);
+  border-radius: 2px;
+  color: var(--ink);
+  animation: alert-in var(--dur-base) var(--ease-out);
+}
+.alert.is-critical { border-left-color: var(--critical); }
+.alert.is-critical::before { content: '▲ '; color: var(--critical); }
+.alert.is-warn::before { content: '● '; color: var(--warn); }
+
+@keyframes alert-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ------------------------------------------------------------------ herramientas */
+
+.toolbar {
+  position: absolute;
+  left: var(--s-4);
+  bottom: var(--s-4);
+  display: grid;
+  grid-template-columns: repeat(2, 156px);
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+}
+
+.toolbar button {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: 'key label cost' 'key hint cost';
+  align-items: center;
+  gap: 0 var(--s-2);
+  min-height: 44px;
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-1);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-left: 2px solid transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: background var(--dur-instant), color var(--dur-instant),
+              border-color var(--dur-instant);
+}
+
+.toolbar button:hover { background: rgba(255, 255, 255, 0.04); color: var(--ink); }
+
+/* La herramienta activa se marca con su propio color, no con uno global:
+   el acento del HUD lo pone la herramienta, no la interfaz. */
+.toolbar button.is-active {
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+  border-left-color: var(--accent);
+  color: var(--ink);
+}
+
+.toolbar kbd {
+  grid-area: key;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  font-family: var(--font-num);
+  font-size: 11px;
+  color: var(--ink-faint);
+  background: var(--surface-sunken);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+}
+.toolbar button.is-active kbd { color: var(--accent); border-color: var(--accent); }
+
+.toolbar b {
+  grid-area: label;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+}
+
+/* Las pistas no envuelven: si un boton crece, la retícula de la barra deja de
+   ser una retícula y la lectura se rompe. */
+.toolbar span {
+  grid-area: hint;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toolbar em {
+  grid-area: cost;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------ capas */
+
+.overlay-switch {
+  position: absolute;
+  right: var(--s-4);
+  bottom: var(--s-4);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+}
+
+.overlay-switch button {
+  padding: var(--s-2) var(--s-3);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color var(--dur-instant), background var(--dur-instant);
+}
+.overlay-switch button:hover { color: var(--ink); }
+.overlay-switch button.is-active { color: var(--ink); background: rgba(255, 255, 255, 0.07); }
+
+/* ------------------------------------------------------------------ foco */
+
+:where(button):focus-visible {
+  outline: 2px solid #7fd6ff;
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
