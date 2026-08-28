@@ -195,7 +195,12 @@ await shot('04-overlay-deseabilidad', () => {
   cn.zoom(62);
   cn.overlay(1);
 });
-await shot('05-overlay-trafico', () => { window.__CN.overlay(3); window.__CN.zoom(62); });
+await shot('05-overlay-trafico', () => {
+  window.__CN.overlay(3);
+});
+await shot('05b-overlay-tension', () => {
+  window.__CN.overlay(2);
+});
 
 // --- apagon ---------------------------------------------------------------
 console.log('\n— prueba de apagon —');
@@ -232,7 +237,10 @@ const perf = await page.evaluate(async () => {
   await new Promise((r) => setTimeout(r, 2500));
   return cn.perf();
 });
-console.log(`  ${perf.frameMs.toFixed(2)} ms/frame con ${perf.buildings} edificios`);
+console.log(
+  `  ${perf.frameMs.toFixed(2)} ms/frame con ${perf.buildings} edificios y ${perf.vehicles} vehiculos`,
+);
+check('hay trafico circulando', perf.vehicles > 200, `${perf.vehicles} vehiculos`);
 check('sin errores de consola', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
 
 await browser.close();

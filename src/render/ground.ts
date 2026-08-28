@@ -10,6 +10,7 @@ import { DISTRICT_SIZE, MAP_SIZE } from '../data/balance';
 import { FOG_GLSL, createFogUniforms, type FogUniforms } from './atmosphere';
 import { PALETTE, rgb } from './palette';
 import { NOISE_GLSL } from './shaders/noise.glsl';
+import { OVERLAY_GLSL } from './shaders/overlay.glsl';
 import type { CityData } from './citydata';
 
 /**
@@ -74,6 +75,7 @@ export class Ground {
 
         ${NOISE_GLSL}
         ${FOG_GLSL}
+        ${OVERLAY_GLSL}
 
         const vec3 C_ASPHALT  = vec3(${rgb(PALETTE.asphalt).join(', ')});
         const vec3 C_SIDEWALK = vec3(${rgb(PALETTE.sidewalk).join(', ')});
@@ -139,7 +141,7 @@ export class Ground {
           border = max(border, (1.0 - isOpenAt(tile + vec2( 1.0, 0.0))) * smoothstep(0.18, 0.0, 1.0 - f.x));
           border = max(border, (1.0 - isOpenAt(tile + vec2(0.0, -1.0))) * smoothstep(0.18, 0.0, f.y));
           border = max(border, (1.0 - isOpenAt(tile + vec2(0.0,  1.0))) * smoothstep(0.18, 0.0, 1.0 - f.y));
-          col += vec3(0.10, 0.55, 0.95) * border * open * 0.22 * uDetail;
+          col += vec3(0.10, 0.55, 0.95) * border * open * 0.085 * uDetail;
 
           // ---------------------------------------------------- solares
           bool zoned = zone >= 2.0 && zone <= 5.0;
@@ -213,8 +215,8 @@ export class Ground {
               : vec2(mix(0.16, 0.84, side), 0.5);
             float ld = length(f - lampPos);
             vec3 lampCol = vec3(1.0, 0.76, 0.42);
-            tar += lampCol * lampOn * (smoothstep(0.40, 0.0, ld) * 0.075 +
-                                       smoothstep(0.045, 0.0, ld) * 1.35);
+            tar += lampCol * lampOn * (smoothstep(0.44, 0.0, ld) * 0.115 +
+                                       smoothstep(0.075, 0.0, ld) * 2.10);
 
             col = tar;
           }
@@ -269,18 +271,9 @@ export class Ground {
 
           // ---------------------------------------------------- superposiciones
           if (uOverlay > 0.5) {
-            float v = uOverlay < 1.5 ? fld.b            // deseabilidad
-                    : uOverlay < 2.5 ? fld.g            // tension
-                    : uOverlay < 3.5 ? min(1.0, cong * 0.7)  // trafico
-                    : min(1.0, glow * 0.35);            // brillo
-            vec3 ramp = uOverlay < 1.5
-              ? mix(vec3(0.45, 0.05, 0.12), vec3(0.15, 0.95, 0.55), v)
-              : uOverlay < 2.5
-                ? mix(vec3(0.05, 0.25, 0.35), vec3(1.0, 0.15, 0.25), v)
-                : uOverlay < 3.5
-                  ? mix(vec3(0.05, 0.5, 0.35), vec3(1.0, 0.2, 0.1), v)
-                  : mix(vec3(0.03, 0.05, 0.15), vec3(0.4, 0.95, 1.0), v);
-            col = mix(col, ramp, 0.72 * open);
+            float v = overlayValue(uOverlay, fld, cong);
+            float paint = mix(1.0, road, overlayIsRoadOnly(uOverlay));
+            col = mix(OVERLAY_BASE, mix(OVERLAY_BASE, overlayRamp(uOverlay, v), paint), open);
           }
 
           // ---------------------------------------------------- cursor

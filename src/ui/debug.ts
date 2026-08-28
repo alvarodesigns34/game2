@@ -83,7 +83,7 @@ export function installDebugApi(game: Game): void {
     },
 
     perf() {
-      return { frameMs: game.averageFrameMs, buildings: game.buildingCount };
+      return { frameMs: game.averageFrameMs, buildings: game.buildingCount, vehicles: game.vehicleCount };
     },
 
     bounds() {

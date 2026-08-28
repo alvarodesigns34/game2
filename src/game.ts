@@ -4,6 +4,7 @@ import { PaintResult, Tool, World } from './sim/world';
 import { Buildings } from './render/buildings';
 import { CityData } from './render/citydata';
 import { Ground } from './render/ground';
+import { Vehicles } from './render/vehicles';
 import { IsoCamera } from './render/camera';
 import { Renderer } from './render/scene';
 import { updateFog } from './render/atmosphere';
@@ -37,6 +38,7 @@ export class Game {
   private readonly data = new CityData();
   private readonly ground: Ground;
   private readonly buildings = new Buildings();
+  private readonly vehicles = new Vehicles();
   private readonly clock = new Clock();
 
   private accumulator = 0;
@@ -57,9 +59,11 @@ export class Game {
     this.ground = new Ground(this.data);
     this.renderer.scene.add(this.ground.mesh);
     this.buildings.addTo(this.renderer.scene);
+    this.vehicles.addTo(this.renderer.scene);
 
     this.data.syncData(this.world.grid, true);
     this.data.syncFields(this.world.grid);
+    this.buildings.setFieldTexture(this.data.fieldTexture);
     this.buildings.sync(this.world.grid, 0, true);
 
     const g = this.world.grid;
@@ -107,10 +111,20 @@ export class Game {
     this.camera.update(dt);
     this.syncVisuals();
 
+    // El trafico solo avanza con el reloj del juego: en pausa la ciudad se
+    // queda quieta de verdad, que es lo que se espera de una pausa.
+    const detail = this.camera.detail;
+    this.vehicles.update(
+      this.world.grid,
+      speed > 0 ? dt * Math.min(speed, 3) : 0,
+      Math.round(300 + 3400 * detail * detail),
+    );
+
     this.ground.update(this.elapsed, this.camera.detail);
     this.buildings.update(this.elapsed, this.camera.detail);
     updateFog(this.ground.fogUniforms, this.camera.target, this.camera.currentViewSize);
     updateFog(this.buildings.fogUniforms, this.camera.target, this.camera.currentViewSize);
+    updateFog(this.vehicles.fogUniforms, this.camera.target, this.camera.currentViewSize);
     this.renderer.setBloomForZoom(this.camera.detail);
     this.renderer.render();
 
@@ -163,6 +177,7 @@ export class Game {
   cycleOverlay(mode?: number): void {
     this.overlay = mode ?? (this.overlay + 1) % 5;
     this.ground.setOverlay(this.overlay);
+    this.buildings.setOverlay(this.overlay);
     this.events.emit('overlay', this.overlay);
   }
 
@@ -208,6 +223,10 @@ export class Game {
 
   get buildingCount(): number {
     return this.buildings.count;
+  }
+
+  get vehicleCount(): number {
+    return this.vehicles.count;
   }
 
   /** Encuadra la camara sobre el centro de masas de lo construido. */

@@ -7,10 +7,12 @@ import {
   Matrix4,
   Object3D,
   ShaderMaterial,
+  type Texture,
   Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
+  MAP_SIZE,
   FOOTPRINT_COM,
   FOOTPRINT_IND,
   FOOTPRINT_RES,
@@ -25,6 +27,7 @@ import { Zone } from '../sim/types';
 import { FOG_GLSL, createFogUniforms, type FogUniforms } from './atmosphere';
 import { PALETTE, rgb } from './palette';
 import { NOISE_GLSL } from './shaders/noise.glsl';
+import { OVERLAY_GLSL } from './shaders/overlay.glsl';
 
 /** Siluetas disponibles. Tres variantes bastan para que el skyline no se repita. */
 const enum Silhouette {
@@ -264,6 +267,15 @@ export class Buildings {
     this.material.uniforms.uDetail.value = detail;
   }
 
+  setOverlay(mode: number): void {
+    this.material.uniforms.uOverlay.value = mode;
+  }
+
+  /** El material de fachadas lee el mismo campo que el suelo. */
+  setFieldTexture(texture: Texture): void {
+    this.material.uniforms.uField.value = texture;
+  }
+
   /** Solo para depuracion: posicion media de los edificios, para encuadrar. */
   centroid(): Vector3 {
     const out = new Vector3();
@@ -299,6 +311,9 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
       ...fog,
       uTime: { value: 0 },
       uDetail: { value: 1 },
+      uOverlay: { value: 0 },
+      uField: { value: null as unknown as Texture },
+      uMapSize: { value: MAP_SIZE },
     },
     vertexShader: /* glsl */ `
       attribute vec4 aInfo;
@@ -355,9 +370,13 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
 
       uniform float uTime;
       uniform float uDetail;
+      uniform float uOverlay;
+      uniform sampler2D uField;
+      uniform float uMapSize;
 
       ${NOISE_GLSL}
       ${FOG_GLSL}
+      ${OVERLAY_GLSL}
 
       const vec3 C_CONCRETE = vec3(${rgb(PALETTE.concrete).join(', ')});
       const vec3 C_DARK     = vec3(${rgb(PALETTE.concreteDark).join(', ')});
@@ -505,7 +524,21 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
         // Un edificio a oscuras se apaga de verdad: solo queda su volumen.
         col *= mix(0.55, 1.0, lit);
 
-        gl_FragColor = vec4(applyCityFog(col + emissive, vWorld), 1.0);
+        vec3 outColor = col + emissive;
+
+        if (uOverlay > 0.5) {
+          // Con una capa activa el edificio deja de estar encendido y pasa a
+          // ser una barra de color: se tine con el valor del campo en su
+          // propia casilla, conservando el sombreado por orientacion para que
+          // los volumenes sigan leyendose como volumenes.
+          vec4 fld = texture2D(uField, clamp(vWorld.xz / uMapSize, 0.0, 1.0));
+          float v = overlayValue(uOverlay, fld, 0.0);
+          vec3 tinted = overlayRamp(uOverlay, v) * (0.45 + 0.55 * facing);
+          // El trafico no ocurre en los edificios: ahi se quedan en silueta.
+          outColor = mix(tinted, OVERLAY_BASE * 2.0, overlayIsRoadOnly(uOverlay));
+        }
+
+        gl_FragColor = vec4(applyCityFog(outColor, vWorld), 1.0);
       }
     `,
   });
