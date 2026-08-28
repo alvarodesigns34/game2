@@ -12,11 +12,9 @@ export const PALETTE = {
   /** Fondo y niebla: azul de medianoche, nunca negro puro. */
   night: new Color('#070a14'),
   fogNear: new Color('#070a14'),
-  horizon: new Color('#141c38'),
 
   /** Suelo. */
   asphalt: new Color('#0a0d16'),
-  asphaltWet: new Color('#0e1424'),
   sidewalk: new Color('#171b28'),
   laneMark: new Color('#2a3348'),
   lockedGround: new Color('#02040a'),

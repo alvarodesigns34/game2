@@ -1,4 +1,3 @@
-import { IsoCamera } from '../render/camera';
 import { Tool } from '../sim/world';
 import type { Game } from '../game';
 
@@ -121,5 +120,3 @@ export function installInput(canvas: HTMLCanvasElement, game: Game): void {
   }
 }
 
-/** Reexportado para que el HUD conozca los limites de zoom. */
-export const ZOOM_LIMITS = [IsoCamera.MIN_VIEW, IsoCamera.MAX_VIEW] as const;

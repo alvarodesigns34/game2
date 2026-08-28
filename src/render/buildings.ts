@@ -461,8 +461,7 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
           float h = hash21(rid + seed * 31.0);
           col = mix(col, col * 2.4, step(0.76, h));
           // Peto perimetral: un filo claro que separa un tejado del siguiente.
-          vec2 edge = abs(vFacade) / max(vec2(0.0001), abs(vFacade) + 0.0001);
-          float rim = smoothstep(0.34, 0.46, max(abs(vFacade.x), abs(vFacade.y)) / max(0.2, vHeight * 0.0 + 0.5));
+          float rim = smoothstep(0.34, 0.46, max(abs(vFacade.x), abs(vFacade.y)) / 0.5);
           col += vec3(0.012, 0.015, 0.024) * rim;
 
           // Baliza roja de obstaculo en los edificios altos.

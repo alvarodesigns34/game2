@@ -5,7 +5,7 @@ import {
   START_DISTRICTS,
 } from '../data/balance';
 import { Rng } from '../core/rng';
-import { Zone, isBuilt } from './types';
+import { Zone } from './types';
 
 /**
  * Estado del mundo en Structure-of-Arrays: un typed array por propiedad en vez
@@ -204,12 +204,5 @@ export class Grid {
       return z[i] === Zone.Road && d[i] !== 0xffff;
     };
     return check(x - 1, y) || check(x + 1, y) || check(x, y - 1) || check(x, y + 1);
-  }
-
-  /** Numero de casillas edificadas, para estadisticas y para el render. */
-  countBuilt(): number {
-    let c = 0;
-    for (let i = 0; i < this.size; i++) if (isBuilt(this.zone[i] as Zone)) c++;
-    return c;
   }
 }

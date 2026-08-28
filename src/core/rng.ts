@@ -37,10 +37,3 @@ export class Rng {
   }
 }
 
-/** Hash determinista de dos enteros a [0, 1). Util para ruido por casilla. */
-export function hash2(x: number, y: number): number {
-  let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1);
-  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
-  h ^= h >>> 13;
-  return (h >>> 0) / 4294967296;
-}

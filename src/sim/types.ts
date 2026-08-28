@@ -17,12 +17,6 @@ export const enum Zone {
   OrderPost = 7,
 }
 
-/** Zonas que desarrollan edificios por si solas (el jugador no las coloca). */
-export const GROWABLE: readonly Zone[] = [Zone.Residential, Zone.Commercial, Zone.Industrial];
-
-/** Zonas colocadas directamente por el jugador y que no evolucionan. */
-export const SERVICE: readonly Zone[] = [Zone.Park, Zone.PowerPlant, Zone.OrderPost];
-
 export function isGrowable(z: Zone): boolean {
   return z === Zone.Residential || z === Zone.Commercial || z === Zone.Industrial;
 }

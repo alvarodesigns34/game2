@@ -254,8 +254,6 @@ export const TRIPS_PER_JOB = 0.40;
 export const ROAD_CAPACITY = 1_600;
 /** Congestion a partir de la cual la casilla empieza a perder deseabilidad. */
 export const CONGESTION_FLOOR = 0.55;
-/** Distancia maxima a un empleo, en casillas de red, antes de considerarla inaccesible. */
-export const MAX_JOB_DISTANCE = 90;
 
 // ---------------------------------------------------------------- geometria
 
