@@ -39,7 +39,7 @@ export class Renderer {
     // ACES comprime bastante los medios tonos. En una escena nocturna, donde
     // casi todo vive en la parte baja de la curva, hay que compensar o el
     // asfalto se vuelve negro plano y se pierde el volumen de la ciudad.
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMappingExposure = 1.18;
     this.renderer.setClearColor(PALETTE.night, 1);
 
     this.composer = new EffectComposer(this.renderer);

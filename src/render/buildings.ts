@@ -1,5 +1,6 @@
 import {
   BoxGeometry,
+  BufferAttribute,
   BufferGeometry,
   DynamicDrawUsage,
   InstancedBufferAttribute,
@@ -16,6 +17,9 @@ import {
   FOOTPRINT_COM,
   FOOTPRINT_IND,
   FOOTPRINT_RES,
+  PLOT_JITTER,
+  PLOT_ROTATION_COM,
+  PLOT_ROTATION_RES,
   HEIGHT_COM,
   HEIGHT_IND,
   HEIGHT_ORDER_POST,
@@ -44,6 +48,22 @@ const VARIANTS = 3;
 function unitBox(w: number, h: number, d: number, y: number): BufferGeometry {
   const g = new BoxGeometry(w, h, d);
   g.translate(0, y + h / 2, 0);
+
+  /**
+   * Media anchura de esta caja, grabada en cada vertice.
+   *
+   * Hace falta para dibujar el peto de la cubierta a la distancia correcta del
+   * borde: las siluetas con retranqueo estan hechas de varias cajas de tamanos
+   * distintos, y sin este dato el shader no puede saber donde termina la que
+   * esta sombreando.
+   */
+  const n = g.getAttribute('position').count;
+  const half = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    half[i * 2] = w / 2;
+    half[i * 2 + 1] = d / 2;
+  }
+  g.setAttribute('aBoxHalf', new BufferAttribute(half, 2));
   return g;
 }
 
@@ -188,8 +208,12 @@ export class Buildings {
         if (!isService && (level === 0 || z < Zone.Residential || z > Zone.Industrial)) continue;
 
         const seedRaw = g.seed[i];
-        const r1 = ((seedRaw & 0xffff) / 65535);
-        const r2 = (((seedRaw >>> 16) & 0xffff) / 65535);
+        const r1 = (seedRaw & 0x7ff) / 2047;
+        const r2 = ((seedRaw >>> 11) & 0x7ff) / 2047;
+        // Un tercer sorteo independiente para el desplazamiento y el giro: si
+        // se reutiliza el mismo que la altura, los edificios altos acaban
+        // todos desplazados hacia el mismo lado y se nota.
+        const r3 = ((seedRaw >>> 22) & 0x3ff) / 1023;
 
         let height: number;
         let foot: number;
@@ -224,16 +248,39 @@ export class Buildings {
 
         // Variacion de altura por casilla: sin esto una manzana entera del
         // mismo nivel produce una linea de tejados plana y artificial.
-        height *= 0.66 + r2 * 0.72;
-        const width = foot * (0.9 + r1 * 0.12);
-        const depth = foot * (0.9 + r2 * 0.12);
+        height *= 0.60 + r2 * 0.85;
+
+        /**
+         * Una parte de las parcelas conserva una edificacion baja: garajes,
+         * naves viejas, casas que nadie ha vendido todavia. Una manzana en la
+         * que los nueve solares tienen la misma altura se lee como una maqueta;
+         * con unos pocos rezagados aparece la historia del barrio.
+         */
+        if (!isService && r3 > 0.80) height *= 0.42 + r1 * 0.18;
+
+        // Proporciones distintas en planta: no todos los solares son cuadrados.
+        const stretch = 0.86 + r1 * 0.30;
+        const width = foot * stretch;
+        const depth = foot * (1.16 - (stretch - 0.86));
 
         const slot = counts[variant]++;
         if (slot >= this.capacity) continue;
 
-        this.dummy.position.set(x + 0.5, 0, y + 0.5);
+        // Desplazamiento y giro dentro del solar. Es lo que rompe la retícula:
+        // sin ellos, mil edificios alineados al milimetro sobre una cuadricula
+        // perfecta se leen como un grafico, no como una ciudad.
+        const jitter = isService ? 0 : PLOT_JITTER;
+        const rot = isService
+          ? 0
+          : (r3 - 0.5) * 2 * (z === Zone.Commercial ? PLOT_ROTATION_COM : PLOT_ROTATION_RES);
+
+        this.dummy.position.set(
+          x + 0.5 + (r1 - 0.5) * 2 * jitter,
+          0,
+          y + 0.5 + (r2 - 0.5) * 2 * jitter,
+        );
         this.dummy.scale.set(width, height, depth);
-        this.dummy.rotation.set(0, 0, 0);
+        this.dummy.rotation.set(0, rot, 0);
         this.dummy.updateMatrix();
         this.meshes[variant].setMatrixAt(slot, this.dummy.matrix);
 
@@ -331,12 +378,15 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
       attribute vec3 aSize;
       attribute vec3 aTint;
       attribute float aBirth;
+      attribute vec2 aBoxHalf;
 
       varying vec2 vFacade;
       varying float vFace;
       varying vec4 vInfo;
       varying vec3 vTint;
       varying vec3 vNormalL;
+      varying vec3 vNormalW;
+      varying vec2 vHalf;
       varying float vHeight;
       varying vec3 vWorld;
       varying float vGrow;
@@ -386,6 +436,11 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
         vInfo = aInfo;
         vTint = aTint;
         vNormalL = n;
+        // La rotacion de instancia es ortogonal y las normales de una caja van
+        // en los ejes, asi que normalizar despues de escalar da la normal de
+        // mundo exacta sin necesitar la transpuesta de la inversa.
+        vNormalW = normalize(mat3(instanceMatrix) * n);
+        vHalf = aBoxHalf * aSize.xz;
         vHeight = aSize.y * mix(0.86, 1.0, grow);
 
         vec4 world = modelMatrix * instanceMatrix * vec4(p, 1.0);
@@ -401,6 +456,8 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
       varying vec4 vInfo;
       varying vec3 vTint;
       varying vec3 vNormalL;
+      varying vec3 vNormalW;
+      varying vec2 vHalf;
       varying float vHeight;
       varying vec3 vWorld;
       varying float vGrow;
@@ -421,7 +478,11 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
       const vec3 C_WIN_COM  = vec3(${rgb(PALETTE.windowCom).join(', ')});
       const vec3 C_WIN_IND  = vec3(${rgb(PALETTE.windowInd).join(', ')});
 
-      /** Ancho y alto de una ventana, en unidades de mundo. */
+      /**
+       * Modulo de ventana base, en unidades de mundo. Cada edificio lo altera
+       * segun su semilla: con un unico ritmo, mil fachadas distintas quedan
+       * exactamente iguales y el barrio se lee como papel pintado repetido.
+       */
       const float WIN_W = 0.170;
       const float WIN_H = 0.255;
 
@@ -448,7 +509,17 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
                     : wsel < 0.76 ? vec3(0.80, 0.87, 1.00)
                     :               vec3(1.00, 0.88, 0.74);
         vec3 winColor = isRes ? C_WIN_RES : isCom ? comWin : C_WIN_IND;
-        vec3 col = mix(C_DARK, C_CONCRETE, 0.35 + seed * 0.5);
+        /**
+         * Material base. Un unico gris azulado para toda la ciudad delata la
+         * ausencia de decision; una ciudad real mezcla hormigon, ladrillo y
+         * chapa, y de noche esa mezcla se nota en la temperatura del gris.
+         */
+        float mat = hash21(vec2(seed * 3.7, 61.0));
+        vec3 material = mat < 0.34 ? vec3(1.00, 0.97, 0.93)
+                      : mat < 0.62 ? vec3(1.08, 0.92, 0.84)
+                      : mat < 0.85 ? vec3(0.92, 0.96, 1.06)
+                      :              vec3(0.98, 1.00, 0.98);
+        vec3 col = mix(C_DARK, C_CONCRETE, 0.30 + seed * 0.55) * material;
         vec3 emissive = vec3(0.0);
 
         if (vFace < 0.5) {
@@ -456,13 +527,45 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
           // Vista cenital: la cubierta es la superficie que mas ocupa la
           // pantalla. Es donde vive la oscuridad de la escena, y sin ella no
           // hay contraste contra el que lea el neon.
-          col *= 0.34;
-          vec2 rid = floor(vFacade * 7.0);
+          col *= 0.30;
+
+          /**
+           * Equipos de cubierta: depositos, climatizadores, casetas.
+           *
+           * En vista isometrica el tejado es la superficie que mas pantalla
+           * ocupa, asi que dejarlo liso es desperdiciar justo donde mas se
+           * mira. Se dibujan como rectangulos con su sombra desplazada, que a
+           * esta distancia es indistinguible de geometria real y no cuesta ni
+           * un vertice.
+           */
+          vec2 cellR = vFacade / 0.235;
+          vec2 rid = floor(cellR);
+          vec2 rf = fract(cellR);
           float h = hash21(rid + seed * 31.0);
-          col = mix(col, col * 2.4, step(0.76, h));
-          // Peto perimetral: un filo claro que separa un tejado del siguiente.
-          float rim = smoothstep(0.34, 0.46, max(abs(vFacade.x), abs(vFacade.y)) / 0.5);
-          col += vec3(0.012, 0.015, 0.024) * rim;
+          if (h > 0.62) {
+            float size = 0.26 + h * 0.30;
+            vec2 dBox = abs(rf - 0.5);
+            float box = step(max(dBox.x, dBox.y), size);
+            vec2 dSh = abs(rf - 0.5 + vec2(0.16, 0.16));
+            float shade = step(max(dSh.x, dSh.y), size) * (1.0 - box);
+            col *= 1.0 - shade * 0.55;
+            col += vec3(0.011, 0.013, 0.019) * box * (0.6 + h * 0.8);
+          }
+
+          /**
+           * Peto perimetral.
+           *
+           * Es el detalle que mas ayuda a contar edificios desde arriba: un
+           * filo claro alrededor de cada cubierta y una sombra justo por
+           * dentro. Sin el, dos torres contiguas de la misma altura se funden
+           * en una sola mancha oscura.
+           */
+          float e = max(abs(vFacade.x) / max(vHalf.x, 0.001),
+                        abs(vFacade.y) / max(vHalf.y, 0.001));
+          float inner = smoothstep(0.58, 0.76, e) * smoothstep(0.86, 0.78, e);
+          float cap = smoothstep(0.84, 0.94, e);
+          col *= 1.0 - inner * 0.45;
+          col += vec3(0.020, 0.024, 0.034) * cap;
 
           // Baliza roja de obstaculo en los edificios altos.
           if (vHeight > 3.0) {
@@ -551,11 +654,40 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
           }
         }
 
-        // Oscurecimiento de las caras que miran al norte: sin luces reales,
-        // esta variacion por orientacion es lo que evita que los volumenes se
-        // lean como siluetas planas recortadas.
-        float facing = 0.72 + 0.28 * clamp(dot(normalize(vNormalL), normalize(vec3(0.6, 0.5, 0.62))), 0.0, 1.0);
-        col *= facing;
+        /**
+         * Iluminacion ambiental de dos terminos.
+         *
+         * No hay luces reales en la escena: miles de puntos de neon serian
+         * inviables. Lo que da volumen es esto: un hemisferio (cielo nocturno
+         * arriba, rebote frio del asfalto abajo) mas una luz clave muy tenue
+         * que representa el resplandor general de la ciudad.
+         *
+         * El rango va de 0,30 a 1,10 en vez del 0,72 a 1,00 anterior: con tan
+         * poco recorrido, dos caras perpendiculares tenian practicamente el
+         * mismo valor y las cajas se leian como siluetas planas recortadas.
+         */
+        vec3 N = normalize(vNormalW);
+        float sky = N.y * 0.5 + 0.5;
+        float key = max(0.0, dot(N, normalize(vec3(-0.52, 0.60, 0.60))));
+        float facing = 0.35 + 0.40 * sky + 0.40 * key;
+        // Las caras que ven mas cielo se enfrian; las que reciben la clave se
+        // calientan un punto. Un gris uniforme delata la ausencia de decision.
+        col *= facing * mix(vec3(1.03, 1.0, 0.95), vec3(0.90, 0.96, 1.10), sky);
+
+        /**
+         * Canon urbano: a pie de calle no llega la luz del cielo, y ese
+         * degradado es lo que hace que una torre se lea como alta y no solo
+         * como grande.
+         *
+         * El tramo oscurecido es proporcional a la altura del edificio, no
+         * absoluto: con un valor fijo, una torre de cuarenta plantas apenas se
+         * enteraba mientras que una casa de dos quedaba entera en penumbra, y
+         * el tejido residencial, que es el 80% de la ciudad, desaparecia.
+         */
+        if (vFace > 0.5) {
+          float depth = vFacade.y / max(vHeight, 0.01);
+          col *= mix(0.52, 1.0, smoothstep(0.0, 0.38, depth));
+        }
 
         // Un edificio a oscuras se apaga de verdad: solo queda su volumen.
         col *= mix(0.55, 1.0, lit);

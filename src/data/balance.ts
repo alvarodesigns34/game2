@@ -266,12 +266,23 @@ export const HEIGHT_COM = [0, 0.60, 1.30, 3.00, 6.50, 13.00] as const;
 export const HEIGHT_IND = [0, 0.50, 0.80, 1.30, 2.00, 3.20] as const;
 
 /** Huella del edificio dentro de su casilla (1 = ocupa la casilla entera). */
-// Huellas generosas: con solares de 4x4 dentro de cada manzana, un edificio
-// pequeno deja tanto suelo a la vista que la manzana no llega a leerse como
-// manzana. Casi tocandose, el tejido urbano aparece solo.
-export const FOOTPRINT_RES = 0.86;
-export const FOOTPRINT_COM = 0.90;
-export const FOOTPRINT_IND = 0.92;
+/**
+ * Huella del edificio dentro de su casilla.
+ *
+ * Deliberadamente por debajo de 1: con edificios que casi tocan, una manzana se
+ * lee como un unico bloque macizo y deja de distinguirse un edificio de otro.
+ * El hueco entre ellos es lo que hace que se cuenten, y ademas deja ver la
+ * calle, los patios y la luz que se derrama en el pavimento.
+ */
+export const FOOTPRINT_RES = 0.70;
+export const FOOTPRINT_COM = 0.78;
+export const FOOTPRINT_IND = 0.82;
+
+/** Desplazamiento maximo del edificio dentro de su solar, en casillas. */
+export const PLOT_JITTER = 0.085;
+/** Giro maximo del edificio respecto a la retícula, en radianes. */
+export const PLOT_ROTATION_RES = 0.10;
+export const PLOT_ROTATION_COM = 0.035;
 
 /** Altura visual de los servicios colocados a mano. */
 export const HEIGHT_POWER_PLANT = 1.6;

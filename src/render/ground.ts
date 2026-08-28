@@ -84,7 +84,7 @@ export class Ground {
         const vec3 C_LANE     = vec3(${rgb(PALETTE.laneMark).join(', ')});
         const vec3 C_LOCKED   = vec3(0.0045, 0.0058, 0.0100);
         const vec3 C_GROUND   = vec3(0.0098, 0.0125, 0.0200);
-        const vec3 C_PLOT     = vec3(0.020, 0.024, 0.036);
+        const vec3 C_PLOT     = vec3(0.034, 0.039, 0.052);
         const vec3 C_RES      = vec3(${rgb(PALETTE.zoneRes).join(', ')});
         const vec3 C_COM      = vec3(${rgb(PALETTE.zoneCom).join(', ')});
         const vec3 C_IND      = vec3(${rgb(PALETTE.zoneInd).join(', ')});
@@ -93,6 +93,21 @@ export class Ground {
         const vec3 C_NEON_B   = vec3(${rgb(PALETTE.neonMagenta).join(', ')});
         const vec3 C_NEON_W   = vec3(${rgb(PALETTE.neonAmber).join(', ')});
 
+        /**
+         * Altura aproximada de lo construido en una casilla.
+         *
+         * Reproduce las tablas de altura del balance con una exponencial en vez
+         * de con un array: en GLSL ES indexar una tabla con un valor variable
+         * no esta garantizado, y para calcular oclusion basta la aproximacion.
+         */
+        float heightOf(float zone, float level) {
+          if (level < 0.5) return 0.0;
+          if (zone > 5.5) return 1.4;                       // servicios
+          float base = zone < 2.5 ? 0.50 : (zone < 3.5 ? 0.60 : 0.50);
+          float k    = zone < 2.5 ? 1.70 : (zone < 3.5 ? 2.15 : 1.59);
+          return base * pow(k, level - 1.0);
+        }
+
         vec4 dataAt(vec2 tile) {
           vec2 uv = (floor(tile) + 0.5) / uMapSize;
           return texture2D(uData, clamp(uv, 0.0, 1.0));
@@ -100,6 +115,35 @@ export class Ground {
         float zoneAt(vec2 tile) { return floor(dataAt(tile).r * 255.0 + 0.5); }
         float isRoadAt(vec2 tile) { return 1.0 - step(0.5, abs(zoneAt(tile) - 1.0)); }
         float isOpenAt(vec2 tile) { return step(0.25, dataAt(tile).a); }
+
+        float heightAt(vec2 tile) {
+          vec4 d = dataAt(tile);
+          return heightOf(floor(d.r * 255.0 + 0.5), floor(d.g * 255.0 + 0.5));
+        }
+
+        /**
+         * Oclusion ambiental del pavimento.
+         *
+         * Lo unico que ilumina la escena es el cielo nocturno y el resplandor
+         * general de la ciudad, asi que lo que oscurece una calle es tener
+         * edificios altos alrededor tapandola. Es el detalle que hace que los
+         * volumenes se apoyen en el suelo en vez de flotar sobre el, y de paso
+         * dibuja los patios interiores de manzana.
+         */
+        float groundOcclusion(vec2 tile) {
+          float occ =
+            heightAt(tile + vec2( 1.0,  0.0)) +
+            heightAt(tile + vec2(-1.0,  0.0)) +
+            heightAt(tile + vec2( 0.0,  1.0)) +
+            heightAt(tile + vec2( 0.0, -1.0)) +
+            0.55 * (heightAt(tile + vec2( 1.0,  1.0)) +
+                    heightAt(tile + vec2( 1.0, -1.0)) +
+                    heightAt(tile + vec2(-1.0,  1.0)) +
+                    heightAt(tile + vec2(-1.0, -1.0)));
+          // Suelo de 0,42: ni el patio mas cerrado se queda a oscuras del todo,
+          // porque siempre le llega luz rebotada de las fachadas que lo cierran.
+          return max(0.42, 1.0 / (1.0 + occ * 0.075));
+        }
 
         void main() {
           vec2 tile = vWorld.xz;
@@ -169,10 +213,13 @@ export class Ground {
               // compite con las luces convierte el mapa en un tablero.
               vec2 e = min(f, 1.0 - f);
               float corner = step(max(e.x, e.y), 0.16) * step(min(e.x, e.y), 0.05);
-              col += tint * corner * 0.30 * uDetail;
-              col += tint * 0.012;
+              col += tint * corner * 0.16 * uDetail;
+              col += tint * 0.008;
             } else {
-              col = mix(col, C_PLOT, 0.85);
+              // Suelo de parcela: patio, aparcamiento, callejon. Mas claro que
+              // el terreno sin urbanizar, porque esta pavimentado, y con su
+              // propio grano para que no sea una mancha plana.
+              col = mix(col, C_PLOT * (0.82 + fbm(tile * 8.0) * 0.36), 0.92);
             }
             if (zone > 4.5) {
               // Parque: cesped oscuro con manchas de vegetacion.
@@ -237,6 +284,10 @@ export class Ground {
             col = tar;
           }
 
+          // ---------------------------------------------------- oclusion
+          float ao = groundOcclusion(tile);
+          col *= mix(1.0, ao, open);
+
           // ---------------------------------------------------- luz derramada
           // El brillo de los edificios cercanos se refleja en el pavimento.
           // Es lo que convierte una cuadricula de cajas en una ciudad mojada.
@@ -273,7 +324,9 @@ export class Ground {
           float wetness = uWet * puddle * streak;
 
           float spill = glow * (0.11 + 0.58 * wetness) * (road > 0.5 ? 1.4 : 0.6);
-          col += tint * spill;
+          // La luz reflejada tambien queda tapada por los edificios, aunque
+          // menos: buena parte llega rebotada desde sus propias fachadas.
+          col += tint * spill * mix(1.0, ao, 0.55);
           col += tint * halo * 0.055;
 
           // Congestion. Muy contenida en la vista normal: es un sintoma que se

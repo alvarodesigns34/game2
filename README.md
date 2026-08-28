@@ -101,6 +101,16 @@ propiedad): cero objetos por casilla y cero presión sobre el recolector.
   una torre de cuarenta pisos. Miles de edificios con las ventanas encendidas
   una a una **en tres llamadas de dibujo**, y un apagón se aplica escribiendo un
   cero en un atributo.
+- **Cuatro tipologías constructivas** sorteadas por la semilla de cada solar
+  (retícula estrecha, retícula ancha, muro cortina, ventana corrida), más
+  variación de material, altura, proporción, giro y posición dentro de la
+  parcela. Sin eso, mil edificios alineados al milímetro sobre una cuadrícula
+  perfecta se leen como un gráfico, no como una ciudad.
+- **Volumen sin luces reales.** Miles de puntos de neón como luces serían
+  inviables, así que el relieve sale de un ambiente de hemisferio más una luz
+  clave muy tenue, petos de cubierta que recortan cada edificio del de al lado,
+  y oclusión ambiental en el pavimento calculada a partir de la altura de los
+  vecinos, que es lo que hace que los volúmenes se apoyen en el suelo.
 - **Tráfico sin pathfinding.** La carga de cada calle sale de un algoritmo de
   cuenca fluvial: los viajes nacen en las viviendas y bajan por el gradiente
   hacia el empleo. Las arterias saturadas emergen solas del trazado. Los
