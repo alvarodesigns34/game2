@@ -83,7 +83,9 @@ export class Vehicles {
     geometry.translate(0, CAR_H / 2, 0);
 
     this.fogUniforms = createFogUniforms();
-    this.mesh = new InstancedMesh(geometry, createVehicleMaterial(this.fogUniforms), capacity);
+    const material = createVehicleMaterial(this.fogUniforms);
+    material.name = 'ciudad:vehiculos';
+    this.mesh = new InstancedMesh(geometry, material, capacity);
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);

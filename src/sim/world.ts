@@ -73,7 +73,7 @@ export class World {
   tick = 0;
 
   private lastCensus: Census = {
-    population: 0, comJobs: 0, indJobs: 0, buildings: 0, roads: 0, income: 0, upkeep: 0,
+    population: 0, comJobs: 0, indJobs: 0, buildings: 0, topLevel: 0, roads: 0, income: 0, upkeep: 0,
   };
   private lastPower: PowerResult = { supply: 0, demand: 0, dark: 0, consumers: 0 };
   private lastTraffic: TrafficResult = { averageCongestion: 0, jammed: 0, totalTrips: 0 };
@@ -84,8 +84,30 @@ export class World {
     this.rng = new Rng(seed ^ 0x5bf03635);
     this.queue = new Int32Array(this.grid.size);
     this.jobDist = new Uint16Array(this.grid.size);
-    this.recomputeNetworks();
-    this.fields.update(this.grid);
+    this.seedStartingInfrastructure();
+    // Censo inicial: sin el, las estadisticas estarian a cero hasta el primer
+    // tick y el HUD arrancaria mintiendo.
+    this.forceRefresh();
+  }
+
+  /**
+   * Infraestructura de partida: una autopista que ya cruzaba el solar.
+   *
+   * Un mapa completamente vacio es una mala primera pantalla y una mala
+   * primera decision: no hay nada que mirar y no hay ningun sitio evidente por
+   * donde empezar. Una arteria preexistente da ancla visual, ensena de que va
+   * el juego (todo cuelga de la red viaria) y deja que la primera decision del
+   * jugador sea donde ramificar, que es una decision interesante, en vez de
+   * donde poner la primera casilla, que no lo es.
+   */
+  private seedStartingInfrastructure(): void {
+    const g = this.grid;
+    const y = (g.minY + g.maxY) >> 1;
+    for (let x = g.minX; x <= g.maxX; x++) {
+      g.zone[g.idx(x, y)] = Zone.Road;
+    }
+    g.networkDirty = true;
+    g.visualVersion++;
   }
 
   // ---------------------------------------------------------------- tick
@@ -110,7 +132,7 @@ export class World {
       this.fields.averageTension,
     );
 
-    updateGrowth(g, this.rng, this.demand.values, this.tick % GROWTH_PHASES);
+    updateGrowth(g, this.rng, this.demand.values, this.tick % GROWTH_PHASES, this.tick);
 
     this.money += (this.lastCensus.income - this.lastCensus.upkeep) * TICK_DT;
   }
@@ -152,6 +174,7 @@ export class World {
     g.age[i] = 0;
     g.darkFor[i] = 0;
     g.powered[i] = 0;
+    g.changedAt[i] = this.tick;
 
     // Cualquier cambio que afecte a la red obliga a recalcular energia y
     // trafico antes del siguiente crecimiento.
@@ -220,6 +243,7 @@ export class World {
       glow: this.fields.totalGlow,
       tension: this.fields.averageTension,
       buildings: c.buildings,
+      topLevel: c.topLevel,
       roads: c.roads,
       districtsUnlocked: this.grid.districtsUnlocked,
     };

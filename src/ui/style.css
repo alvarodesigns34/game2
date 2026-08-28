@@ -183,10 +183,19 @@ html, body {
 
 /* ------------------------------------------------------------------ demanda */
 
-.demand-panel {
+/* Columna izquierda: demanda arriba, objetivos debajo. El centro de la
+   pantalla queda siempre despejado, porque ahi esta la ciudad. */
+.side {
   position: absolute;
   left: var(--s-4);
   top: 78px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  align-items: flex-start;
+}
+
+.demand-panel {
   width: 96px;
   padding: var(--s-3) var(--s-3) var(--s-5);
   background: var(--surface);
@@ -238,8 +247,8 @@ html, body {
   transition: height var(--dur-base) var(--ease-out), background var(--dur-fast);
 }
 
-.bar[data-sign='pos'] i { bottom: 50%; background: var(--good); }
-.bar[data-sign='neg'] i { top: 50%; background: var(--critical); }
+.bar i[data-sign='pos'] { bottom: 50%; background: var(--good); }
+.bar i[data-sign='neg'] { top: 50%; background: var(--critical); }
 
 .bar span {
   position: absolute;
@@ -249,6 +258,59 @@ html, body {
   font-family: var(--font-num);
   font-size: 10px;
   color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------ objetivos */
+
+.goals {
+  width: 218px;
+  padding: var(--s-3);
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--hairline);
+  border-left: 2px solid var(--good);
+  border-radius: 4px;
+}
+
+.goals h2 {
+  margin: 0 0 var(--s-2);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.goal-text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.goal-hint {
+  margin: var(--s-1) 0 var(--s-3);
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.goal-progress {
+  height: 2px;
+  background: var(--surface-sunken);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.goal-progress i {
+  display: block;
+  height: 100%;
+  width: var(--v, 0%);
+  background: var(--good);
+  transition: width var(--dur-slow, 480ms) var(--ease-out);
 }
 
 /* ------------------------------------------------------------------ avisos */
@@ -285,6 +347,29 @@ html, body {
   to { opacity: 1; transform: none; }
 }
 
+/* Mensaje puntual de respuesta a una accion del jugador. Distinto de las
+   alertas: aquellas describen un estado, este responde a un clic. */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translate(-50%, 8px);
+  padding: var(--s-2) var(--s-4);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 3px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast), transform var(--dur-base) var(--ease-out);
+}
+.toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 /* ------------------------------------------------------------------ herramientas */
 
 .toolbar {
@@ -294,6 +379,7 @@ html, body {
   display: grid;
   grid-template-columns: repeat(2, 156px);
   gap: 2px;
+  align-content: start;
   padding: 2px;
   background: var(--surface);
   backdrop-filter: blur(14px);
@@ -375,6 +461,22 @@ html, body {
   font-style: normal;
   color: var(--ink-faint);
 }
+
+/* Expandir no es una herramienta mas: opera sobre un distrito entero, no
+   sobre una casilla. El contorno discontinuo lo dice antes de leer el texto. */
+.toolbar .expand {
+  grid-column: 1 / -1;
+  border: 1px dashed var(--hairline-strong);
+  border-left: 2px solid transparent;
+  margin-top: 2px;
+}
+.toolbar .expand.is-active {
+  background: color-mix(in oklab, #7fd6ff 16%, transparent);
+  border-color: #7fd6ff;
+  border-left-color: #7fd6ff;
+  color: var(--ink);
+}
+.toolbar .expand.is-blocked em { color: var(--critical); }
 
 /* ------------------------------------------------------------------ capas */
 

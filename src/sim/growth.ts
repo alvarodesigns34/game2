@@ -40,8 +40,9 @@ export function updateGrowth(
   rng: Rng,
   demand: readonly [number, number, number],
   phase: number,
+  tick: number,
 ): GrowthResult {
-  const { zone, level, age, darkFor, powered, desire, industryDesire, w } = g;
+  const { zone, level, age, darkFor, powered, desire, industryDesire, changedAt, w } = g;
   const { minX, minY, maxX, maxY } = g;
 
   let built = 0;
@@ -64,6 +65,7 @@ export function updateGrowth(
         if (lv > 0 && rng.next() < 0.25) {
           level[i] = lv - 1;
           age[i] = 0;
+          changedAt[i] = tick;
           decayed++;
           g.visualVersion++;
         }
@@ -88,6 +90,7 @@ export function updateGrowth(
           if (rng.next() < chance) {
             level[i] = lv - 1;
             age[i] = 0;
+            changedAt[i] = tick;
             decayed++;
             g.visualVersion++;
           }
@@ -102,6 +105,7 @@ export function updateGrowth(
         if (dem > DEMAND_BUILD_THRESHOLD && rng.next() < 0.10 + 0.45 * dem) {
           level[i] = 1;
           age[i] = 0;
+          changedAt[i] = tick;
           built++;
           g.visualVersion++;
         }
@@ -129,6 +133,7 @@ export function updateGrowth(
       if (rng.next() < 0.05 + 0.30 * Math.max(0, dem) + 0.5 * margin) {
         level[i] = lv + 1;
         age[i] = 0;
+        changedAt[i] = tick;
         upgraded++;
         g.visualVersion++;
       }

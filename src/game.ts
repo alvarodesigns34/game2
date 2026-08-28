@@ -1,5 +1,5 @@
 import { Clock } from 'three';
-import { MAP_SIZE, TICK_DT } from './data/balance';
+import { DISTRICT_SIZE, MAP_SIZE, TICK_DT } from './data/balance';
 import { PaintResult, Tool, World } from './sim/world';
 import { Buildings } from './render/buildings';
 import { CityData } from './render/citydata';
@@ -13,7 +13,8 @@ import type { CityStats } from './sim/types';
 
 export interface GameEvents {
   stats: CityStats;
-  tool: Tool;
+  tool: Tool | -1;
+  expand: boolean;
   speed: number;
   overlay: number;
   notice: string;
@@ -46,6 +47,12 @@ export class Game {
   private speedIndex = 1;
   private tool: Tool = Tool.Road;
   private overlay = 0;
+  /**
+   * Modo expansion: el clic deja de construir y pasa a comprar el distrito
+   * bajo el cursor. Es una modalidad aparte y no una herramienta mas porque
+   * opera sobre una region de 32x32, no sobre una casilla.
+   */
+  private expanding = false;
   private running = false;
 
   /** Marca de tiempo de la ultima actualizacion de campos, para refrescar la GPU. */
@@ -121,7 +128,7 @@ export class Game {
     );
 
     this.ground.update(this.elapsed, this.camera.detail);
-    this.buildings.update(this.elapsed, this.camera.detail);
+    this.buildings.update(this.elapsed, this.camera.detail, this.world.tick);
     updateFog(this.ground.fogUniforms, this.camera.target, this.camera.currentViewSize);
     updateFog(this.buildings.fogUniforms, this.camera.target, this.camera.currentViewSize);
     updateFog(this.vehicles.fogUniforms, this.camera.target, this.camera.currentViewSize);
@@ -158,7 +165,19 @@ export class Game {
 
   setTool(tool: Tool): void {
     this.tool = tool;
+    this.expanding = false;
     this.events.emit('tool', tool);
+    this.events.emit('expand', false);
+  }
+
+  setExpanding(on: boolean): void {
+    this.expanding = on;
+    this.events.emit('expand', on);
+    this.events.emit('tool', on ? -1 : this.tool);
+  }
+
+  get isExpanding(): boolean {
+    return this.expanding;
   }
 
   get currentTool(): Tool {
@@ -187,10 +206,28 @@ export class Game {
 
   /** Aplica la herramienta activa. Devuelve true si cambio algo. */
   applyTool(x: number, y: number): boolean {
+    if (this.expanding) return this.tryBuyDistrict(x, y);
+
     const r = this.world.paint(x, y, this.tool);
     if (r === PaintResult.TooExpensive) this.events.emit('notice', 'Fondos insuficientes');
-    else if (r === PaintResult.Locked) this.events.emit('notice', 'Ese distrito no es tuyo todavia');
+    else if (r === PaintResult.Locked) {
+      this.events.emit('notice', 'Ese distrito no es tuyo. Pulsa EXPANDIR para comprarlo');
+    }
     return r === PaintResult.Applied;
+  }
+
+  private tryBuyDistrict(x: number, y: number): boolean {
+    const blocker = this.world.districtBlocker(x, y);
+    if (blocker !== null) {
+      this.events.emit('notice', blocker);
+      return false;
+    }
+    const cost = this.world.nextDistrictCost;
+    if (!this.world.buyDistrict(x, y)) return false;
+    this.events.emit('notice', `Distrito anexionado por ¥${Math.round(cost).toLocaleString('es-ES')}`);
+    this.data.syncData(this.world.grid, true);
+    this.buildings.sync(this.world.grid, this.world.tick, true);
+    return true;
   }
 
   hoverTile(px: number, py: number): [number, number] | null {
@@ -200,7 +237,15 @@ export class Game {
       this.ground.clearCursor();
       return null;
     }
-    this.ground.setCursor(tile[0], tile[1], this.world.grid.isUnlocked(tile[0], tile[1]));
+    if (this.expanding) {
+      // El cursor se ajusta al distrito completo: lo que se compra es la
+      // region entera, y el cursor tiene que decirlo sin ambiguedad.
+      const dx = Math.floor(tile[0] / DISTRICT_SIZE) * DISTRICT_SIZE;
+      const dy = Math.floor(tile[1] / DISTRICT_SIZE) * DISTRICT_SIZE;
+      this.ground.setCursor(dx, dy, this.world.districtBlocker(tile[0], tile[1]) === null, DISTRICT_SIZE);
+    } else {
+      this.ground.setCursor(tile[0], tile[1], this.world.grid.isUnlocked(tile[0], tile[1]), 1);
+    }
     return tile;
   }
 

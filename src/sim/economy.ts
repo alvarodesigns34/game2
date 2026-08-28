@@ -15,6 +15,7 @@ export interface Census {
   comJobs: number;
   indJobs: number;
   buildings: number;
+  topLevel: number;
   roads: number;
   /** Ingresos en ¥/segundo. */
   income: number;
@@ -42,6 +43,7 @@ export function census(g: Grid): Census {
   let comJobs = 0;
   let indJobs = 0;
   let buildings = 0;
+  let topLevel = 0;
   let roads = 0;
   let income = 0;
   let upkeep = 0;
@@ -72,6 +74,7 @@ export function census(g: Grid): Census {
 
       if (lv === 0) continue;
       buildings++;
+      if (lv > topLevel) topLevel = lv;
       // Un edificio a oscuras no produce: ni habitantes que tributen ni
       // comercio que facture.
       if (powered[i] !== 1) continue;
@@ -95,5 +98,5 @@ export function census(g: Grid): Census {
     }
   }
 
-  return { population, comJobs, indJobs, buildings, roads, income, upkeep };
+  return { population, comJobs, indJobs, buildings, topLevel, roads, income, upkeep };
 }

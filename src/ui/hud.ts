@@ -23,6 +23,31 @@ const TOOLS: ToolDef[] = [
 
 const OVERLAYS = ['Ciudad', 'Deseabilidad', 'Tension', 'Trafico', 'Brillo'];
 
+/**
+ * Objetivos.
+ *
+ * No son misiones ni dan recompensa: son la respuesta a "y ahora que hago".
+ * Un constructor de ciudades arranca con un mapa vacio y ninguna instruccion,
+ * y sin una primera direccion el jugador no llega a descubrir que la ciudad
+ * crece sola. Se completan y desaparecen; nunca vuelven a aparecer.
+ */
+interface Goal {
+  text: string;
+  hint: string;
+  done: (s: CityStats) => boolean;
+}
+
+const GOALS: Goal[] = [
+  { text: 'Ramifica la autopista', hint: 'Arrastra con el boton izquierdo para trazar calles', done: (s) => s.roads >= 100 },
+  { text: 'Levanta una central electrica', hint: 'Tiene que tocar una calle: la energia viaja por ellas', done: (s) => s.powerSupply > 0 },
+  { text: 'Zonifica viviendas junto a la calle', hint: 'No coloques edificios: la ciudad los construye sola', done: (s) => s.population > 0 },
+  { text: 'Dale trabajo a tu gente', hint: 'Sin empleo, la poblacion deja de crecer', done: (s) => s.jobs >= 30 },
+  { text: 'Alcanza 500 habitantes', hint: 'Zonifica mas y vigila la energia', done: (s) => s.population >= 500 },
+  { text: 'Levanta tu primer rascacielos', hint: 'Un edificio solo sube de nivel si su entorno lo merece', done: (s) => s.topLevel >= 4 },
+  { text: 'Anexiona un distrito nuevo', hint: 'Pulsa EXPANDIR y elige un distrito contiguo', done: (s) => s.districtsUnlocked > 4 },
+  { text: 'Alcanza 5.000 habitantes', hint: 'El brillo atrae poblacion; la tension la expulsa', done: (s) => s.population >= 5000 },
+];
+
 const fmt = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
 const fmt1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
 
@@ -44,16 +69,25 @@ export function mountHud(root: HTMLElement, game: Game): void {
       </div>
     </header>
 
-    <aside class="demand-panel">
-      <h2>Demanda</h2>
-      <div class="bars">
-        <div class="bar" data-d="0"><i></i><span>R</span></div>
-        <div class="bar" data-d="1"><i></i><span>C</span></div>
-        <div class="bar" data-d="2"><i></i><span>I</span></div>
-      </div>
+    <aside class="side">
+      <section class="demand-panel">
+        <h2>Demanda</h2>
+        <div class="bars">
+          <div class="bar" data-d="0"><i></i><span>R</span></div>
+          <div class="bar" data-d="1"><i></i><span>C</span></div>
+          <div class="bar" data-d="2"><i></i><span>I</span></div>
+        </div>
+      </section>
+      <section class="goals" data-goals hidden>
+        <h2>Siguiente paso</h2>
+        <p class="goal-text" data-goal-text></p>
+        <p class="goal-hint" data-goal-hint></p>
+        <div class="goal-progress"><i data-goal-bar></i></div>
+      </section>
     </aside>
 
     <div class="alerts" data-alerts></div>
+    <div class="toast" data-toast></div>
 
     <nav class="toolbar">
       ${TOOLS.map(
@@ -64,6 +98,12 @@ export function mountHud(root: HTMLElement, game: Game): void {
           <em>¥${fmt.format(TOOL_COST[t.tool])}</em>
         </button>`,
       ).join('')}
+      <button class="expand" data-expand>
+        <kbd>G</kbd>
+        <b>Expandir</b>
+        <span data-expand-hint>Anexionar distrito</span>
+        <em data-expand-cost>—</em>
+      </button>
     </nav>
 
     <div class="overlay-switch">
@@ -81,6 +121,11 @@ export function mountHud(root: HTMLElement, game: Game): void {
     b.addEventListener('click', () => game.setTool(Number(b.dataset.tool) as Tool)),
   );
 
+  const expandButton = root.querySelector<HTMLButtonElement>('[data-expand]')!;
+  const expandCost = root.querySelector<HTMLElement>('[data-expand-cost]')!;
+  const expandHint = root.querySelector<HTMLElement>('[data-expand-hint]')!;
+  expandButton.addEventListener('click', () => game.setExpanding(!game.isExpanding));
+
   const speedButtons = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-speed]'));
   speedButtons.forEach((b) =>
     b.addEventListener('click', () => game.setSpeedIndex(Number(b.dataset.speed))),
@@ -93,10 +138,16 @@ export function mountHud(root: HTMLElement, game: Game): void {
 
   const bars = Array.from(root.querySelectorAll<HTMLElement>('[data-d] i'));
   const alerts = root.querySelector<HTMLElement>('[data-alerts]')!;
+  const toast = root.querySelector<HTMLElement>('[data-toast]')!;
+  const goals = root.querySelector<HTMLElement>('[data-goals]')!;
+  const goalText = root.querySelector<HTMLElement>('[data-goal-text]')!;
+  const goalHint = root.querySelector<HTMLElement>('[data-goal-hint]')!;
+  const goalBar = root.querySelector<HTMLElement>('[data-goal-bar]')!;
 
-  const syncTool = (tool: Tool) => {
+  const syncTool = (tool: Tool | -1) => {
     toolButtons.forEach((b) => b.classList.toggle('is-active', Number(b.dataset.tool) === tool));
   };
+  const syncExpand = (on: boolean) => expandButton.classList.toggle('is-active', on);
   const syncSpeed = (i: number) => {
     speedButtons.forEach((b) => b.classList.toggle('is-active', Number(b.dataset.speed) === i));
   };
@@ -105,13 +156,24 @@ export function mountHud(root: HTMLElement, game: Game): void {
   };
 
   game.events.on('tool', syncTool);
+  game.events.on('expand', syncExpand);
   game.events.on('speed', syncSpeed);
   game.events.on('overlay', syncOverlay);
   syncTool(game.currentTool);
   syncSpeed(game.currentSpeedIndex);
   syncOverlay(game.currentOverlay);
 
+  let toastTimer = 0;
+  game.events.on('notice', (text: string) => {
+    toast.textContent = text;
+    toast.classList.add('is-visible');
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+  });
+
+  let goalIndex = 0;
   let lastRender = 0;
+
   game.events.on('stats', (s: CityStats) => {
     // El HUD se refresca a 10 Hz: mas seria trabajo de DOM tirado a la basura.
     const now = performance.now();
@@ -120,7 +182,9 @@ export function mountHud(root: HTMLElement, game: Game): void {
 
     const net = s.income - s.upkeep;
     readouts.get('money')!.textContent = `¥${fmt.format(s.money)}`;
-    readouts.get('money')!.parentElement!.dataset.trend = net >= 0 ? 'up' : 'down';
+    // Umbral, no signo: un goteo de menos de un yen por segundo no es una
+    // crisis, y marcarlo en rojo en el primer fotograma solo genera ruido.
+    readouts.get('money')!.parentElement!.dataset.trend = net > -1 ? 'up' : 'down';
     readouts.get('pop')!.textContent = fmt.format(s.population);
     readouts.get('jobs')!.textContent = fmt.format(s.jobs);
     readouts.get('power')!.textContent =
@@ -135,6 +199,28 @@ export function mountHud(root: HTMLElement, game: Game): void {
       const v = s.demand[k];
       bars[k].style.setProperty('--v', `${Math.abs(v) * 100}%`);
       bars[k].dataset.sign = v >= 0 ? 'pos' : 'neg';
+    }
+
+    // Coste y requisito del siguiente distrito.
+    const cost = game.world.nextDistrictCost;
+    const need = game.world.nextDistrictPopRequirement;
+    expandCost.textContent = `¥${fmt.format(cost)}`;
+    const short = s.population < need;
+    expandHint.textContent = short ? `Necesitas ${fmt.format(need)} hab.` : 'Anexionar distrito';
+    expandButton.classList.toggle('is-blocked', short || s.money < cost);
+
+    // Objetivos: avanzar al primero sin completar.
+    while (goalIndex < GOALS.length && GOALS[goalIndex].done(s)) goalIndex++;
+    if (goalIndex >= GOALS.length) {
+      goals.hidden = true;
+    } else {
+      goals.hidden = false;
+      const g = GOALS[goalIndex];
+      if (goalText.textContent !== g.text) {
+        goalText.textContent = g.text;
+        goalHint.textContent = g.hint;
+      }
+      goalBar.style.setProperty('--v', `${(goalIndex / GOALS.length) * 100}%`);
     }
 
     renderAlerts(alerts, s);

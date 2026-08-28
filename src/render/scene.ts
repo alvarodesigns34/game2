@@ -92,6 +92,7 @@ export class Renderer {
         }
       `,
     });
+    this.grade.material.name = 'ciudad:gradacion';
     this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
   }

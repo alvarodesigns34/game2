@@ -44,6 +44,7 @@ export class Ground {
         uTime: { value: 0 },
         uDetail: { value: 1 },
         uCursor: { value: new Vector2(-1, -1) },
+        uCursorSize: { value: 1 },
         uCursorColor: { value: new Vector3(0.2, 0.9, 1.0) },
         uCursorValid: { value: 1 },
         uWet: { value: 1 },
@@ -68,6 +69,7 @@ export class Ground {
         uniform float uTime;
         uniform float uDetail;
         uniform vec2 uCursor;
+        uniform float uCursorSize;
         uniform vec3 uCursorColor;
         uniform float uCursorValid;
         uniform float uWet;
@@ -81,7 +83,7 @@ export class Ground {
         const vec3 C_SIDEWALK = vec3(${rgb(PALETTE.sidewalk).join(', ')});
         const vec3 C_LANE     = vec3(${rgb(PALETTE.laneMark).join(', ')});
         const vec3 C_LOCKED   = vec3(0.0045, 0.0058, 0.0100);
-        const vec3 C_GROUND   = vec3(0.0085, 0.0110, 0.0180);
+        const vec3 C_GROUND   = vec3(0.0098, 0.0125, 0.0200);
         const vec3 C_PLOT     = vec3(0.020, 0.024, 0.036);
         const vec3 C_RES      = vec3(${rgb(PALETTE.zoneRes).join(', ')});
         const vec3 C_COM      = vec3(${rgb(PALETTE.zoneCom).join(', ')});
@@ -114,7 +116,20 @@ export class Ground {
           vec2 f = fract(tile);
 
           // ---------------------------------------------------- suelo base
+          /**
+           * Textura del solar. Con un color plano, el mapa vacio del comienzo
+           * de la partida es literalmente un rectangulo negro: la primera
+           * pantalla del juego no daba nada que mirar. Con manchas de
+           * pavimento y marcas de replanteo se lee como un solar urbano de
+           * noche, esperando a que lo construyan.
+           */
           float grain = fbm(tile * 3.1) * 0.16 + 0.92;
+          // Ojo: 'patch' es palabra reservada en GLSL ES y no compila.
+          float slab = 0.78 + 0.44 * fbm(tile * 0.18 + 31.0);
+          grain *= slab;
+          // Marcas de replanteo cada ocho casillas.
+          vec2 survey = abs(fract(tile / 8.0 + 0.5) - 0.5) * 8.0;
+          float surveyLine = smoothstep(0.06, 0.0, min(survey.x, survey.y));
           /**
            * El suelo sin comprar tiene el mismo valor que el comprado y se
            * distingue por una trama, no por ser mas claro. Con diferencia de
@@ -124,6 +139,7 @@ export class Ground {
            * es justo cuando esa informacion ya no hace falta.
            */
           vec3 col = C_GROUND * grain;
+          col += vec3(0.030, 0.040, 0.058) * surveyLine * open * uDetail * uDetail;
           float hatch = step(0.5, fract((tile.x + tile.y) * 0.5));
           col *= mix(1.0, mix(0.62, 1.18, hatch), (1.0 - open) * uDetail * 0.85);
 
@@ -277,20 +293,24 @@ export class Ground {
           }
 
           // ---------------------------------------------------- cursor
-          vec2 cd = abs(tile - (uCursor + 0.5));
-          float inCursor = step(max(cd.x, cd.y), 0.5);
-          float cursorEdge = inCursor * max(
-            smoothstep(0.36, 0.5, max(cd.x, cd.y)),
-            0.18
-          );
+          // Rectangular y de tamano variable: la misma primitiva sirve para
+          // una casilla al construir y para un distrito entero al expandir.
+          vec2 rel = tile - uCursor;
+          float inCursor =
+            step(0.0, rel.x) * step(0.0, rel.y) *
+            step(rel.x, uCursorSize) * step(rel.y, uCursorSize);
+          float edgeDist = min(min(rel.x, uCursorSize - rel.x),
+                               min(rel.y, uCursorSize - rel.y));
+          float cursorEdge = inCursor * smoothstep(0.34, 0.0, edgeDist);
           vec3 cursorCol = mix(vec3(1.0, 0.2, 0.28), uCursorColor, uCursorValid);
-          col += cursorCol * cursorEdge * 0.85;
+          col += cursorCol * (inCursor * 0.045 + cursorEdge * 0.75);
 
           gl_FragColor = vec4(applyCityFog(col, vWorld), 1.0);
         }
       `,
     });
 
+    this.material.name = 'ciudad:suelo';
     this.mesh = new Mesh(geometry, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -10;
@@ -301,13 +321,14 @@ export class Ground {
     this.material.uniforms.uDetail.value = detail;
   }
 
-  setCursor(x: number, y: number, valid: boolean): void {
+  setCursor(x: number, y: number, valid: boolean, size = 1): void {
     (this.material.uniforms.uCursor.value as Vector2).set(x, y);
     this.material.uniforms.uCursorValid.value = valid ? 1 : 0;
+    this.material.uniforms.uCursorSize.value = size;
   }
 
   clearCursor(): void {
-    (this.material.uniforms.uCursor.value as Vector2).set(-10, -10);
+    (this.material.uniforms.uCursor.value as Vector2).set(-100, -100);
   }
 
   setOverlay(mode: number): void {

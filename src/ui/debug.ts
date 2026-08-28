@@ -74,6 +74,13 @@ export function installDebugApi(game: Game): void {
       game.camera.zoomBy(view / game.camera.currentViewSize);
     },
 
+    expand(x: number, y: number) {
+      game.setExpanding(true);
+      const ok = game.applyTool(x, y);
+      game.setExpanding(false);
+      return ok;
+    },
+
     tilt(degrees: number) {
       game.camera.setTiltDegrees(degrees);
     },

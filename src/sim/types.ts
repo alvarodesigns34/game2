@@ -64,6 +64,8 @@ export interface CityStats {
   /** Tension media de las zonas habitadas en [0, 1]. */
   tension: number;
   buildings: number;
+  /** Nivel del edificio mas desarrollado de la ciudad. */
+  topLevel: number;
   roads: number;
   districtsUnlocked: number;
 }

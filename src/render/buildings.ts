@@ -83,6 +83,7 @@ export class Buildings {
   private info: Float32Array[] = [];
   private size: Float32Array[] = [];
   private tint: Float32Array[] = [];
+  private birth: Float32Array[] = [];
   private lastVisualVersion = -1;
   private lastPowerStamp = -1;
 
@@ -97,6 +98,7 @@ export class Buildings {
   constructor(initialCapacity = 4096) {
     this.fogUniforms = createFogUniforms();
     this.material = createFacadeMaterial(this.fogUniforms);
+    this.material.name = 'ciudad:fachadas';
     for (let v = 0; v < VARIANTS; v++) {
       const mesh = new InstancedMesh(buildSilhouette(v as Silhouette), this.material, 1);
       mesh.frustumCulled = false;
@@ -111,6 +113,7 @@ export class Buildings {
     this.info = [];
     this.size = [];
     this.tint = [];
+    this.birth = [];
 
     for (let v = 0; v < VARIANTS; v++) {
       const old = this.meshes[v];
@@ -122,12 +125,15 @@ export class Buildings {
       const info = new Float32Array(capacity * 4);
       const size = new Float32Array(capacity * 3);
       const tint = new Float32Array(capacity * 3);
+      const birth = new Float32Array(capacity);
       mesh.geometry.setAttribute('aInfo', new InstancedBufferAttribute(info, 4));
       mesh.geometry.setAttribute('aSize', new InstancedBufferAttribute(size, 3));
       mesh.geometry.setAttribute('aTint', new InstancedBufferAttribute(tint, 3));
+      mesh.geometry.setAttribute('aBirth', new InstancedBufferAttribute(birth, 1));
       this.info.push(info);
       this.size.push(size);
       this.tint.push(tint);
+      this.birth.push(birth);
 
       // Sustituir en el mismo indice para no invalidar referencias externas.
       if (old.parent) {
@@ -242,6 +248,8 @@ export class Buildings {
         sz[slot * 3 + 1] = height;
         sz[slot * 3 + 2] = depth;
 
+        this.birth[variant][slot] = g.changedAt[i];
+
         const t = this.tint[variant];
         const c = neonFor(z, r1);
         t[slot * 3 + 0] = c[0];
@@ -258,12 +266,14 @@ export class Buildings {
       (mesh.geometry.getAttribute('aInfo') as InstancedBufferAttribute).needsUpdate = true;
       (mesh.geometry.getAttribute('aSize') as InstancedBufferAttribute).needsUpdate = true;
       (mesh.geometry.getAttribute('aTint') as InstancedBufferAttribute).needsUpdate = true;
+      (mesh.geometry.getAttribute('aBirth') as InstancedBufferAttribute).needsUpdate = true;
     }
     return true;
   }
 
-  update(time: number, detail: number): void {
+  update(time: number, detail: number, tick: number): void {
     this.material.uniforms.uTime.value = time;
+    this.material.uniforms.uTick.value = tick;
     this.material.uniforms.uDetail.value = detail;
   }
 
@@ -310,6 +320,7 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
     uniforms: {
       ...fog,
       uTime: { value: 0 },
+      uTick: { value: 0 },
       uDetail: { value: 1 },
       uOverlay: { value: 0 },
       uField: { value: null as unknown as Texture },
@@ -319,6 +330,7 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
       attribute vec4 aInfo;
       attribute vec3 aSize;
       attribute vec3 aTint;
+      attribute float aBirth;
 
       varying vec2 vFacade;
       varying float vFace;
@@ -327,10 +339,31 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
       varying vec3 vNormalL;
       varying float vHeight;
       varying vec3 vWorld;
+      varying float vGrow;
+
+      uniform float uTick;
+      /** Ticks que tarda un edificio en terminar de levantarse. */
+      const float GROW_TICKS = 11.0;
 
       void main() {
         vec3 p = position;
         vec3 n = normal;
+
+        /**
+         * Animacion de crecimiento.
+         *
+         * El edificio se levanta desde el suelo en lugar de aparecer de golpe.
+         * El instante del cambio lo guarda la simulacion en la casilla, no el
+         * render, asi que la animacion sobrevive a las reconstrucciones de
+         * instancias, que ocurren constantemente mientras la ciudad crece.
+         *
+         * Es lo que convierte el crecimiento de un contador que sube en algo
+         * que se ve pasar: miras un barrio y lo ves levantarse.
+         */
+        float t = clamp((uTick - aBirth) / GROW_TICKS, 0.0, 1.0);
+        float grow = 1.0 - pow(1.0 - t, 3.0);
+        p.y *= grow;
+        p.xz *= mix(0.86, 1.0, grow);
 
         // Coordenadas de fachada en unidades de mundo. Este es el truco que
         // sostiene toda la estetica: al multiplicar por el tamano real de la
@@ -346,11 +379,14 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
           vFace = 1.0;
           vFacade = vec2(p.x * aSize.x, p.y * aSize.y);
         }
+        // La altura util para el neon de cornisa es la del edificio ya
+        // crecido, no la del fotograma actual.
+        vGrow = grow;
 
         vInfo = aInfo;
         vTint = aTint;
         vNormalL = n;
-        vHeight = aSize.y;
+        vHeight = aSize.y * mix(0.86, 1.0, grow);
 
         vec4 world = modelMatrix * instanceMatrix * vec4(p, 1.0);
         vWorld = world.xyz;
@@ -367,6 +403,7 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
       varying vec3 vNormalL;
       varying float vHeight;
       varying vec3 vWorld;
+      varying float vGrow;
 
       uniform float uTime;
       uniform float uDetail;
@@ -523,6 +560,8 @@ function createFacadeMaterial(fog: FogUniforms): ShaderMaterial {
 
         // Un edificio a oscuras se apaga de verdad: solo queda su volumen.
         col *= mix(0.55, 1.0, lit);
+        // Un edificio a medio levantar aun no tiene a nadie dentro.
+        emissive *= smoothstep(0.35, 1.0, vGrow);
 
         vec3 outColor = col + emissive;
 

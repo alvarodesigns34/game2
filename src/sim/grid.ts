@@ -26,6 +26,12 @@ export class Grid {
   /** Ticks acumulados sin energia; a partir de cierto punto degrada. */
   readonly darkFor: Uint16Array;
   /** Semilla visual por casilla: fija variacion de fachada, rotacion y color. */
+  /**
+   * Tick en el que la casilla cambio de nivel por ultima vez. El render lo usa
+   * para animar el crecimiento sin necesitar estado propio: como vive en la
+   * simulacion, sobrevive a las reconstrucciones de instancias.
+   */
+  readonly changedAt: Uint32Array;
   readonly seed: Uint32Array;
   readonly unlockedDistricts: Uint8Array;
 
@@ -71,6 +77,7 @@ export class Grid {
     this.level = new Uint8Array(n);
     this.age = new Uint16Array(n);
     this.darkFor = new Uint16Array(n);
+    this.changedAt = new Uint32Array(n);
     this.seed = new Uint32Array(n);
     this.powered = new Uint8Array(n);
     this.gridDist = new Uint16Array(n);

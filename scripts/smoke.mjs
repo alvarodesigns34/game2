@@ -83,6 +83,44 @@ page.on('pageerror', (e) => consoleErrors.push(String(e)));
 await page.goto(URL, { waitUntil: 'load' });
 await page.waitForFunction(() => Boolean(window.__CN), null, { timeout: 20000 });
 
+async function shot(name, setup) {
+  await page.evaluate(setup);
+  // Dejar que la camara interpole y que el bloom se estabilice.
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: `${OUT}/${name}.png` });
+  console.log(`  ${OUT}/${name}.png`);
+}
+
+// Primera impresion: lo que ve alguien que abre el juego por primera vez.
+await shot('00-inicio', () => {
+  const cn = window.__CN;
+  const b = cn.bounds();
+  cn.look((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2);
+  cn.zoom(46);
+});
+
+// El HUD tiene que reflejar el estado, no solo existir.
+const hud = await page.evaluate(() => {
+  const bars = Array.from(document.querySelectorAll('[data-d] i'));
+  const activeOverlay = document.querySelector('[data-overlay].is-active');
+  return {
+    demandBars: bars.map((b) => b.style.getPropertyValue('--v')),
+    demandSigns: bars.map((b) => b.dataset.sign || ''),
+    money: document.querySelector('[data-r="money"] b')?.textContent || '',
+    goal: document.querySelector('[data-goal-text]')?.textContent || '',
+    overlay: activeOverlay ? activeOverlay.textContent : null,
+  };
+});
+check('las barras de demanda tienen altura', hud.demandBars.every((v) => v && v !== '0%'), hud.demandBars.join(' '));
+check('las barras de demanda tienen signo', hud.demandSigns.every((v) => v === 'pos' || v === 'neg'));
+check('el marcador de fondos muestra dinero', hud.money.includes('60.000'), hud.money);
+check('el primer objetivo guia al jugador', hud.goal.length > 0, hud.goal);
+check(
+  'la partida arranca con una arteria preexistente',
+  (await page.evaluate(() => window.__CN.stats().roads)) > 40,
+);
+check('la capa activa del HUD es Ciudad', hud.overlay === 'Ciudad', String(hud.overlay));
+
 console.log('\n— construccion de la ciudad de prueba —');
 
 /** Traza un distrito completo y lo deja creciendo solo. */
@@ -168,14 +206,6 @@ check('el nucleo levanta rascacielos', grown.glow / Math.max(1, grown.buildings)
 // --- capturas -------------------------------------------------------------
 console.log('\n— capturas —');
 
-async function shot(name, setup) {
-  await page.evaluate(setup);
-  // Dejar que la camara interpole y que el bloom se estabilice.
-  await page.waitForTimeout(900);
-  await page.screenshot({ path: `${OUT}/${name}.png` });
-  console.log(`  ${OUT}/${name}.png`);
-}
-
 await shot('01-calle', ({ cx, cy } = window.__CN.__c || {}) => {
   const cn = window.__CN;
   const b = cn.bounds();
@@ -201,6 +231,50 @@ await shot('05-overlay-trafico', () => {
 await shot('05b-overlay-tension', () => {
   window.__CN.overlay(2);
 });
+
+// --- animacion de crecimiento ---------------------------------------------
+console.log('\n— animacion de crecimiento —');
+const growth = await page.evaluate(() => {
+  const cn = window.__CN;
+  const g = cn.world.grid;
+  const tick = cn.world.tick;
+  let recent = 0;
+  let stale = 0;
+  for (let i = 0; i < g.size; i++) {
+    if (g.level[i] === 0) continue;
+    if (tick - g.changedAt[i] < 40) recent++;
+    else stale++;
+  }
+  return { recent, stale, tick };
+});
+check(
+  'los edificios registran cuando cambiaron',
+  growth.stale > 100,
+  `${growth.stale} consolidados, ${growth.recent} recientes`,
+);
+
+// --- expansion de distrito ------------------------------------------------
+console.log('\n— expansion —');
+const expansion = await page.evaluate(() => {
+  const cn = window.__CN;
+  const before = cn.stats().districtsUnlocked;
+  const b = cn.bounds();
+  cn.money(400000);
+  // Un distrito contiguo por el norte del area actual.
+  const ok = cn.expand(b.minX + 4, b.minY - 4);
+  return { before, ok, after: cn.stats().districtsUnlocked, bounds: cn.bounds() };
+});
+check('se puede anexionar un distrito contiguo', expansion.ok === true);
+check(
+  'la ciudad crece al anexionar',
+  expansion.after === expansion.before + 1,
+  `${expansion.before} -> ${expansion.after}`,
+);
+check(
+  'el area edificable se amplia',
+  expansion.bounds.minY < 96,
+  `minY ${expansion.bounds.minY}`,
+);
 
 // --- apagon ---------------------------------------------------------------
 console.log('\n— prueba de apagon —');
@@ -241,7 +315,11 @@ console.log(
   `  ${perf.frameMs.toFixed(2)} ms/frame con ${perf.buildings} edificios y ${perf.vehicles} vehiculos`,
 );
 check('hay trafico circulando', perf.vehicles > 200, `${perf.vehicles} vehiculos`);
-check('sin errores de consola', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
+if (consoleErrors.length > 0) {
+  console.log('\n— errores de consola —');
+  for (const e of consoleErrors.slice(0, 4)) console.log(`  ${e.slice(0, 900)}`);
+}
+check('sin errores de consola', consoleErrors.length === 0, `${consoleErrors.length} error(es)`);
 
 await browser.close();
 stop();

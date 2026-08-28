@@ -89,6 +89,7 @@ export function installInput(canvas: HTMLCanvasElement, game: Game): void {
       case 'x': game.camera.tiltBy(0.09); break;
       case ' ': e.preventDefault(); game.setSpeedIndex(game.currentSpeedIndex === 0 ? 1 : 0); break;
       case 'f': game.frameCity(); break;
+      case 'g': game.setExpanding(!game.isExpanding); break;
       case 'tab': e.preventDefault(); game.cycleOverlay(); break;
       case 'escape': game.cycleOverlay(0); break;
       case '+': case '=': game.camera.zoomBy(1 / 1.25); break;

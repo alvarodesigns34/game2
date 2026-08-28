@@ -7,7 +7,7 @@ import { Fields } from '../src/sim/fields';
 import { census } from '../src/sim/economy';
 import { Demand } from '../src/sim/demand';
 import { PaintResult, Tool, World } from '../src/sim/world';
-import { POWER_COM, POWER_PLANT_CAPACITY, ROAD_CAPACITY } from '../src/data/balance';
+import { POWER_COM, POWER_PLANT_CAPACITY, ROAD_CAPACITY, START_MONEY } from '../src/data/balance';
 
 /** Centro del area desbloqueada al inicio de la partida. */
 function centre(g: Grid): [number, number] {
@@ -301,14 +301,26 @@ describe('demanda RCI', () => {
 });
 
 describe('World: integracion', () => {
+  it('arranca con una arteria que cruza el distrito inicial', () => {
+    const w = new World(7);
+    const g = w.grid;
+    expect(w.stats.roads).toBeGreaterThan(40);
+    // Y no cuesta dinero: es infraestructura heredada, no construida.
+    expect(w.money).toBe(START_MONEY);
+    const y = (g.minY + g.maxY) >> 1;
+    expect(g.zone[g.idx(g.minX, y)]).toBe(Zone.Road);
+    expect(g.zone[g.idx(g.maxX, y)]).toBe(Zone.Road);
+  });
+
   it('cobra al construir y respeta los distritos bloqueados', () => {
     const w = new World(7);
     const [cx, cy] = centre(w.grid);
     const before = w.money;
 
-    expect(w.paint(cx, cy, Tool.Road)).toBe(PaintResult.Applied);
+    // Fuera de la arteria con la que arranca la partida.
+    expect(w.paint(cx, cy + 3, Tool.Road)).toBe(PaintResult.Applied);
     expect(w.money).toBeLessThan(before);
-    expect(w.paint(cx, cy, Tool.Road)).toBe(PaintResult.NoChange);
+    expect(w.paint(cx, cy + 3, Tool.Road)).toBe(PaintResult.NoChange);
     // Esquina del mapa: distrito no comprado todavia.
     expect(w.paint(2, 2, Tool.Road)).toBe(PaintResult.Locked);
   });
